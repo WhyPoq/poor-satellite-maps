@@ -1,0 +1,23 @@
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Local virtual environments and secrets
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# Generated pipeline outputs
+/results/
+/results_*/
+
+# Operating system files
+.DS_Store
+Thumbs.db

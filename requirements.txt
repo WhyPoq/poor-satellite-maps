@@ -1,0 +1,8 @@
+numpy
+opencv-python
+scipy
+scikit-image
+scikit-learn
+PyMaxflow
+networkx
+shapely
