@@ -2,8 +2,7 @@
   "gabor_params": {"n_orient": 8, "n_scale": 5, "ul": 0.05, "uh": 0.4},
   "tensor_params": {"sigma": 12, "n": 8, "floor": 0.001},
   "segmentation_params": {"lam": 0.25, "n_theta": 8, "max_cycles": 4, "max_k": 8},
-  "centerline_params": {"n_orient": 8, "widths": [6, 8, 10, 12, 16, 20, 24, 32, 40]},
-  "network_params": {"reach": 8, "keep_longest": false, "min_support": 0.7},
-  "smooth_params": null,
-  "simplify_tol": null
+  "extraction_params": {"widths": [10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58], "n_orientations": 12,
+                        "sigma_across": 1.5, "sigma_along": 6.0, "curve_source": "tensor",
+                        "keep_longest": true, "clean": true}
 }

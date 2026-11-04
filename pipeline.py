@@ -5,9 +5,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import centerline
 import gabor
-import network
+import road_map
+import road_network
 import segmentation
 import tensor_voting
 
@@ -61,7 +61,7 @@ def save_stage(output, name, values):
     for key, array in arrays.items():
         if key == "data_costs":
             array = np.minimum(array, np.percentile(array, 99))
-        if array.ndim == 2 or key in ("image", "overlay"):
+        if array.ndim == 2 or key in ("image", "overlay", "road_map"):
             display = array.astype(float) if key == "seeds" else array
             cv2.imwrite(str(folder / f"{key}.png"), preview(display))
         elif array.ndim == 3:
@@ -85,10 +85,7 @@ def run_pipeline(
     gabor_params=None,
     tensor_params=None,
     segmentation_params=None,
-    centerline_params=None,
-    network_params=None,
-    smooth_params=None,
-    simplify_tol=None,
+    extraction_params=None,
 ):
     """Accept a BGR uint8 image (or path) and seed dict (or JSON path)."""
     if isinstance(image, (str, Path)):
@@ -124,37 +121,24 @@ def run_pipeline(
         image, gray, voting, seeds, **(segmentation_params or {})
     )
     record("04_segmentation", segmented)
-    lines = centerline.extract(
-        voting["curve_points"],
-        voting["theta"],
-        segmented["road"],
-        **(centerline_params or {}),
-    )
-    record("05_centerline", lines)
-    context = {**voting, **segmented, **lines, "theta": voting["theta"]}
-    segments = network.snap_and_prune(
-        lines["segments"], road=segmented["road"], **(network_params or {})
-    )
-    record("06_network", {"segments": segments})
-    if smooth_params is not None:
-        segments = [
-            network.smooth(context, segment, **smooth_params) for segment in segments
-        ]
-        record("07_smoothed", {"segments": segments})
-    if simplify_tol is not None:
-        segments = [network.simplify(segment, simplify_tol) for segment in segments]
-        record("08_simplified", {"segments": segments})
-    overlay = image.copy()
     road = segmented["road"]
+    extracted = road_network.extract(
+        image, voting["curve_map"], voting["theta"], road, **(extraction_params or {})
+    )
+    extracted["road_map"] = road_map.render_road_map(
+        extracted["centrelines"], image, road_area=extracted["cleaned_road"]
+    )
+    record("05_road_network", extracted)
+    overlay = image.copy()
     overlay[road] = (0.5 * overlay[road] + 0.5 * np.array([0, 0, 255])).astype(np.uint8)
-    for segment in segments:
-        points = np.round(segment["pts"]).astype(np.int32)
+    for line in extracted["centrelines"]:
+        points = np.round(line["points"]).astype(np.int32)
         cv2.polylines(overlay, [points], False, (0, 255, 255), 1)
-    record("09_result", {"road": road, "overlay": overlay, "segments": segments})
+    record("06_result", {"road": road, "overlay": overlay})
     return {
         "road": road,
         "orientation": segmented["orientation"],
-        "segments": segments,
+        "road_network": extracted,
         "stages": stages,
     }
 

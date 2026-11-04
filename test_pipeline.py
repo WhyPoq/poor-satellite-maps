@@ -7,10 +7,9 @@ from unittest.mock import patch
 import cv2
 import numpy as np
 
-import centerline
 import draw_seeds
 import gabor
-import network
+import road_network
 import segmentation
 import tensor_voting
 from pipeline import run_pipeline
@@ -29,24 +28,20 @@ def test_pipeline():
             image_path,
             seeds_path,
             folder,
-            smooth_params={"iters": 2},
-            simplify_tol=1.5,
+            extraction_params={"widths": [6, 10, 14], "n_orientations": 4},
         )
         assert result["road"][30].all()
         assert not result["road"][:10].any()
-        assert len(result["segments"]) >= 1
+        assert result["road_network"]["centreline_count"] >= 1
         with np.load(Path(folder) / "04_segmentation" / "arrays.npz") as saved:
             np.testing.assert_array_equal(saved["road"], result["road"])
             assert saved["data_costs"].shape == (16, 64, 64)
         for stage in result["stages"]:
             assert (Path(folder) / stage).is_dir()
-        overlay = cv2.imread(str(Path(folder) / "09_result" / "overlay.png"))
+        overlay = cv2.imread(str(Path(folder) / "06_result" / "overlay.png"))
         assert overlay.shape == image.shape
         history = result["stages"]["04_segmentation"]["energy_history"]
         assert np.all(np.diff(history) < 0)
-        segments = result["segments"]
-        parts = network.split(segments[0], segments[0]["pts"][0])
-        assert all(len(part["pts"]) >= 2 for part in parts)
 
 
 def test_uniform_image():
@@ -56,10 +51,10 @@ def test_uniform_image():
         gabor_params={"n_orient": 4, "n_scale": 2},
         tensor_params={"sigma": 2, "n": 2},
         segmentation_params={"n_theta": 2},
-        centerline_params={"widths": [2, 4], "n_orient": 4},
+        extraction_params={"widths": [2, 4], "n_orientations": 4},
     )
     assert result["road"][8, 8] and not result["road"][0, 0]
-    assert result["segments"] == []
+    assert result["road_network"]["centrelines"] == []
     assert np.isfinite(result["stages"]["04_segmentation"]["energy"])
 
 
@@ -77,25 +72,14 @@ def test_gabor_brightness():
 def test_centerline_stays_on_road():
     road = np.zeros((32, 32), bool)
     road[12:20] = True
-    curves = np.zeros_like(road)
-    curves[[12, 19]] = True
-    response, _, _ = centerline.filter_maps(
+    curves = np.zeros(road.shape)
+    curves[[12, 19]] = 1
+    response = road_network.centreline_response(
         curves, np.zeros(road.shape), road, widths=[8]
     )
-    assert not response[~road].any()
-    assert response[road].max() > 0
-
-
-def test_network_connections():
-    a = network.from_points([[2, 8], [10, 8]], 4)
-    b = network.from_points([[20, 8], [28, 8]], 4)
-    road = np.zeros((16, 32), bool)
-    road[6:11, 2:11] = True
-    road[6:11, 20:29] = True
-    assert len(network.snap_and_prune([a, b], road=road)) == 2
-    road[6:11, 10:21] = True
-    assert len(network.snap_and_prune([a, b], road=road)) == 1
-    assert network.snap_and_prune([network.from_points([[2, 8]], 4)]) == []
+    row = response.magnitude[:, 16].argmax()
+    assert 15 <= row <= 16
+    assert response.width[row, 16] == 8
 
 
 def test_tensor_directions():
@@ -178,7 +162,6 @@ if __name__ == "__main__":
         test_uniform_image,
         test_gabor_brightness,
         test_centerline_stays_on_road,
-        test_network_connections,
         test_tensor_directions,
         test_invalid_seeds,
         test_graph_cut,

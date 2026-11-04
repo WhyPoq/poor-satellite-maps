@@ -1,4 +1,4 @@
 {
   "segmentation_params": {"lam": 2.0},
-  "network_params": {"keep_longest": false, "min_support": 0.7}
+  "extraction_params": {"keep_longest": false}
 }
