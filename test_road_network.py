@@ -7,7 +7,7 @@ import numpy as np
 
 import road_network
 from pipeline import run_pipeline
-from road_map import BLOCK, ROAD, render_road_map
+from road_map import BLOCK, connected_lines, fill_holes, CLASS_FILLS, PAPER, ROAD, render_road_map, render_schematic_map
 
 
 def extract(mask, **params):
@@ -110,13 +110,55 @@ def test_road_map_draws_lines_and_only_wide_road_areas():
     original = np.zeros((100, 160, 3), np.uint8)
     lines = [{"points": [[0, 20], [160, 20]], "width": 8}]
     area = np.zeros((100, 160), bool)
-    area[40:90, 20:70] = True  # plaza, much wider than the 8 px road
+    area[20:90, 20:70] = True  # plaza on the road, much wider than the 8 px road
     area[60:63, 100:160] = True  # thin fringe of the mask
     image = render_road_map(lines, original, road_area=area)
     np.testing.assert_array_equal(image[20, 80], ROAD)
     np.testing.assert_array_equal(image[65, 45], ROAD)
     np.testing.assert_array_equal(image[61, 130], BLOCK)
     np.testing.assert_array_equal(image[5, 80], BLOCK)
+
+
+def test_connected_lines_keep_only_groups_reaching_border():
+    lines = [
+        {"points": [[0, 20], [160, 20]], "width": 8},  # touches the border
+        {"points": [[80, 24], [80, 60]], "width": 6},  # touches the first road only
+        {"points": [[110, 50], [150, 50]], "width": 6},  # isolated
+        {"points": [[20, 60], [50, 60]], "width": 6},  # isolated pair
+        {"points": [[50, 60], [50, 85]], "width": 6},
+    ]
+    kept = connected_lines(lines, (100, 160))
+    assert kept == lines[:2]
+    original = np.zeros((100, 160, 3), np.uint8)
+    np.testing.assert_array_equal(render_road_map(lines, original)[50, 130], BLOCK)
+    area = np.zeros((100, 160), bool)
+    area[50:90, 90:140] = True  # wide road area reaching no road and no border
+    np.testing.assert_array_equal(render_road_map(lines, original, road_area=area)[70, 115], BLOCK)
+
+
+def test_fill_holes_keeps_blocks_and_border_regions():
+    mask = np.ones((60, 60), bool)
+    mask[10:13, 10:13] = False  # small island inside the road
+    mask[30:50, 30:50] = False  # enclosed block
+    mask[0:5, 40:60] = False  # small region on the border
+    filled = fill_holes(mask, 100)
+    assert filled[11, 11]
+    assert not filled[40, 40]
+    assert not filled[2, 50]
+
+
+def test_schematic_map_draws_classes_over_paper():
+    lines = [
+        {"points": [[0, 20], [160, 20]], "width": 8},
+        {"points": [[0, 50], [80, 51], [160, 50]], "width": 16},
+        {"points": [[0, 80], [160, 80]], "width": 30},
+    ]
+    image = render_schematic_map(lines, (100, 160))
+    assert image.shape == (100, 160, 3)
+    for y, fill in zip((20, 50, 80), CLASS_FILLS):
+        np.testing.assert_array_equal(image[y, 80], fill)
+    np.testing.assert_array_equal(image[35, 80], PAPER)
+    np.testing.assert_array_equal(render_schematic_map([], (10, 10))[5, 5], PAPER)
 
 
 def test_pipeline_stage():
@@ -135,6 +177,7 @@ def test_pipeline_stage():
         stage = Path(folder) / "05_road_network"
         road_map = cv2.imread(str(stage / "road_map.png"))
         assert road_map.shape == image.shape
+        assert cv2.imread(str(stage / "schematic_map.png")).shape == image.shape
         metadata = json.loads((stage / "metadata.json").read_text(encoding="utf-8"))
         assert metadata["road_network"]["type"] in ("Polygon", "MultiPolygon")
         assert len(metadata["centrelines"]) == network["centreline_count"]

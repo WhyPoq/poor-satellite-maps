@@ -61,7 +61,7 @@ def save_stage(output, name, values):
     for key, array in arrays.items():
         if key == "data_costs":
             array = np.minimum(array, np.percentile(array, 99))
-        if array.ndim == 2 or key in ("image", "overlay", "road_map"):
+        if array.ndim == 2 or key in ("image", "overlay", "road_map", "schematic_map"):
             display = array.astype(float) if key == "seeds" else array
             cv2.imwrite(str(folder / f"{key}.png"), preview(display))
         elif array.ndim == 3:
@@ -128,6 +128,7 @@ def run_pipeline(
     extracted["road_map"] = road_map.render_road_map(
         extracted["centrelines"], image, road_area=extracted["cleaned_road"]
     )
+    extracted["schematic_map"] = road_map.render_schematic_map(extracted["centrelines"], image.shape)
     record("05_road_network", extracted)
     overlay = image.copy()
     overlay[road] = (0.5 * overlay[road] + 0.5 * np.array([0, 0, 255])).astype(np.uint8)
